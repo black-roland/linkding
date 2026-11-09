@@ -112,17 +112,15 @@ class BookmarkViewSet(
 
         metadata = website_loader.load_website_metadata(url, ignore_cache=ignore_cache)
 
-        # Return tags that would be automatically applied to the bookmark
-        profile = request.user.profile
-        auto_tags = []
-        if profile.auto_tagging_rules:
-            try:
-                auto_tags = auto_tagging.get_tags(profile.auto_tagging_rules, url)
-            except Exception as e:
-                logger.error(
-                    f"Failed to auto-tag bookmark. url={url}",
-                    exc_info=e,
-                )
+        if bookmark:
+            title = bookmark.title
+            description = bookmark.description
+        else:
+            title = metadata.title or ""
+            description = metadata.description or ""
+        auto_tags = auto_tagging.collect_auto_tags(
+            request.user, url or "", title, description
+        )
 
         return Response(
             {
@@ -132,6 +130,16 @@ class BookmarkViewSet(
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(methods=["get"], detail=False, url_path="suggest-tags")
+    def suggest_tags(self, request: HttpRequest):
+        auto_tags = auto_tagging.collect_auto_tags(
+            request.user,
+            request.GET.get("url", ""),
+            request.GET.get("title", ""),
+            request.GET.get("description", ""),
+        )
+        return Response({"auto_tags": auto_tags}, status=status.HTTP_200_OK)
 
     @action(methods=["post"], detail=False)
     def singlefile(self, request: HttpRequest):

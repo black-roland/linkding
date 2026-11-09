@@ -1,12 +1,8 @@
-import logging
-
 from django.utils import timezone
 
 from bookmarks.models import Bookmark, User, parse_tag_string
-from bookmarks.services import auto_tagging, tasks, website_loader
+from bookmarks.services import auto_tagging, fasttext_tagging, tasks, website_loader
 from bookmarks.services.tags import get_or_create_tags
-
-logger = logging.getLogger(__name__)
 
 
 def create_bookmark(
@@ -22,7 +18,9 @@ def create_bookmark(
 
     if existing_bookmark is not None:
         _merge_bookmark_data(bookmark, existing_bookmark)
-        return update_bookmark(existing_bookmark, tag_string, current_user)
+        return update_bookmark(
+            existing_bookmark, tag_string, current_user, apply_fasttext=True
+        )
 
     # Set currently logged in user as owner
     bookmark.owner = current_user
@@ -34,7 +32,7 @@ def create_bookmark(
         bookmark.date_modified = timezone.now()
     bookmark.save()
     # Update tag list
-    _update_bookmark_tags(bookmark, tag_string, current_user)
+    _update_bookmark_tags(bookmark, tag_string, current_user, apply_fasttext=True)
     bookmark.save()
     # Create snapshot on web archive
     tasks.create_web_archive_snapshot(current_user, bookmark, False)
@@ -52,12 +50,16 @@ def create_bookmark(
     return bookmark
 
 
-def update_bookmark(bookmark: Bookmark, tag_string, current_user: User):
+def update_bookmark(
+    bookmark: Bookmark, tag_string, current_user: User, *, apply_fasttext: bool = False
+):
     # Detect URL change
     original_bookmark = Bookmark.objects.get(id=bookmark.id)
     has_url_changed = original_bookmark.url != bookmark.url
     # Update tag list
-    _update_bookmark_tags(bookmark, tag_string, current_user)
+    _update_bookmark_tags(
+        bookmark, tag_string, current_user, apply_fasttext=apply_fasttext
+    )
     # Update dates
     bookmark.date_modified = timezone.now()
     bookmark.save()
@@ -74,6 +76,8 @@ def update_bookmark(bookmark: Bookmark, tag_string, current_user: User):
 
 
 def enhance_with_website_metadata(bookmark: Bookmark):
+    title_was_empty = not bookmark.title
+    description_was_empty = not bookmark.description
     metadata = website_loader.load_website_metadata(bookmark.url)
     if not bookmark.title:
         bookmark.title = metadata.title or ""
@@ -82,6 +86,10 @@ def enhance_with_website_metadata(bookmark: Bookmark):
         bookmark.description = metadata.description or ""
 
     bookmark.save()
+    if (title_was_empty and bookmark.title) or (
+        description_was_empty and bookmark.description
+    ):
+        _add_fasttext_tags(bookmark)
 
 
 def archive_bookmark(bookmark: Bookmark):
@@ -223,25 +231,35 @@ def _merge_bookmark_data(from_bookmark: Bookmark, to_bookmark: Bookmark):
     to_bookmark.shared = from_bookmark.shared
 
 
-def _update_bookmark_tags(bookmark: Bookmark, tag_string: str, user: User):
+def _update_bookmark_tags(
+    bookmark: Bookmark, tag_string: str, user: User, *, apply_fasttext: bool = False
+):
     tag_names = parse_tag_string(tag_string)
-
-    if user.profile.auto_tagging_rules:
-        try:
-            auto_tag_names = auto_tagging.get_tags(
-                user.profile.auto_tagging_rules, bookmark.url
-            )
-            for auto_tag_name in auto_tag_names:
-                if auto_tag_name not in tag_names:
-                    tag_names.append(auto_tag_name)
-        except Exception as e:
-            logger.error(
-                f"Failed to auto-tag bookmark. url={bookmark.url}",
-                exc_info=e,
-            )
+    title = bookmark.title if apply_fasttext else ""
+    description = bookmark.description if apply_fasttext else ""
+    for auto_tag_name in auto_tagging.collect_auto_tags(
+        user, bookmark.url, title, description
+    ):
+        if auto_tag_name not in tag_names:
+            tag_names.append(auto_tag_name)
 
     tags = get_or_create_tags(tag_names, user)
     bookmark.tags.set(tags)
+
+
+def _add_fasttext_tags(bookmark: Bookmark):
+    predicted = fasttext_tagging.predict_tags(bookmark.title, bookmark.description)
+    if not predicted or bookmark.owner_id is None:
+        return
+
+    existing = set(bookmark.tags.values_list("name", flat=True))
+    new_names = [name for name in predicted if name not in existing]
+    if not new_names:
+        return
+
+    bookmark.tags.add(*get_or_create_tags(new_names, bookmark.owner))
+    bookmark.date_modified = timezone.now()
+    bookmark.save(update_fields=["date_modified"])
 
 
 def _sanitize_id_list(bookmark_ids: [int | str]) -> [int]:

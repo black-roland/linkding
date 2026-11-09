@@ -99,7 +99,8 @@ Allows to check if a URL is already bookmarked. If the URL is already bookmarked
 response holds the bookmark data, otherwise it is `null`.
 
 Also returns a `metadata` property that contains metadata scraped from the website. Finally, the `auto_tags` property
-contains the tag names that would be automatically added when creating a bookmark for that URL.
+contains the tag names that would be automatically added when creating a bookmark for that URL. That includes URL rules
+and, when configured, fastText predictions from the existing bookmark text or the scraped title and description.
 
 Example response:
 

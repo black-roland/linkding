@@ -40,6 +40,16 @@ The URL matching works like this:
 Note that URL matching currently does not support any kind of wildcards. Rule matching only works based on the URL, not
 on the content of the website or any other aspect of the bookmark.
 
+## fastText
+
+If [`LD_FASTTEXT_MODEL_PATH`](/options#ld_fasttext_model_path) points at a quantized supervised fastText model, linkding
+also predicts tags from the bookmark title and description. Those tags are merged into the same auto-tag preview in the
+"Add a new bookmark" form and applied when the bookmark is saved. The model is loaded once and kept in memory.
+
+Predictions use the scraped title and description unless you edit those fields, in which case the preview updates from
+the text that will be saved. Editing an existing bookmark does not re-apply predicted tags, so a wrong suggestion can be
+removed. URL rules are still re-applied on every save.
+
 ## Example
 
 Consider the following auto tagging rule:

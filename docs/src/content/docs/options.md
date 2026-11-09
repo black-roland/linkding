@@ -40,6 +40,29 @@ Values: `String` | Default = None
 The password for the initial superuser.
 When left undefined, the superuser will be created without a usable password, which means the user can not authenticate using credentials / through the login form, and can only be authenticated using proxy authentication (see [`LD_ENABLE_AUTH_PROXY`](#ld_enable_auth_proxy)).
 
+### `LD_FASTTEXT_MODEL_PATH`
+
+Values: `String` | Default = None
+
+Path to a quantized supervised fastText model (`.ftz`) trained on bookmark titles and descriptions.
+When set, predicted tags are shown in the "Add a new bookmark" form and applied when that bookmark is saved.
+The model is loaded once per web process and kept in memory. Leave empty to disable content-based auto tagging.
+
+The text sent to the model is cleaned the same way as the training data: platform suffixes are stripped, stopwords are
+removed, and samples with fewer than three remaining words are skipped.
+
+### `LD_FASTTEXT_THRESHOLD`
+
+Values: `Float` | Default = `0.3`
+
+Minimum label probability for a fastText prediction to be applied. Used together with [`LD_FASTTEXT_MAX_TAGS`](#ld_fasttext_max_tags).
+
+### `LD_FASTTEXT_MAX_TAGS`
+
+Values: `Integer` | Default = `3`
+
+Maximum number of tags predicted by the fastText model for one bookmark.
+
 ### `LD_DISABLE_BACKGROUND_TASKS`
 
 Values: `True`, `False` | Default = `False`

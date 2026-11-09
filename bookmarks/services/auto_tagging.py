@@ -1,7 +1,36 @@
+import logging
 import re
 from urllib.parse import parse_qs, urlparse
 
 import idna
+
+from bookmarks.services import fasttext_tagging
+
+logger = logging.getLogger(__name__)
+
+
+def collect_auto_tags(
+    user, url: str, title: str = "", description: str = ""
+) -> list[str]:
+    tag_names = []
+    profile = getattr(user, "profile", None)
+    rules = profile.auto_tagging_rules if profile is not None else ""
+    if rules and url:
+        try:
+            for name in get_tags(rules, url):
+                if name not in tag_names:
+                    tag_names.append(name)
+        except Exception:
+            logger.exception("Failed to auto-tag bookmark. url=%s", url)
+
+    try:
+        for name in fasttext_tagging.predict_tags(title, description):
+            if name not in tag_names:
+                tag_names.append(name)
+    except Exception:
+        logger.exception("Failed to predict fastText tags. url=%s", url)
+
+    return tag_names
 
 
 def get_tags(script: str, url: str):

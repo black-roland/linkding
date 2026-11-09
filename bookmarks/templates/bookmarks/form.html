@@ -90,6 +90,7 @@
     /**
      * - Pre-fill title and description with metadata from website as soon as URL changes
      * - Show hint if URL is already bookmarked
+     * - Preview auto tags, including fastText suggestions from the title and description
      */
     (function init() {
       const urlInput = document.getElementById('{{ form.url.id_for_label }}');
@@ -123,6 +124,41 @@
           return;
         }
         input.checked = value;
+      }
+
+      let autoTagRequest = 0;
+
+      function renderAutoTags(autoTags) {
+        const autoTagsHint = document.querySelector('.form-input-hint.auto-tags');
+        if (autoTags && autoTags.length > 0) {
+          const tags = autoTags.slice().sort();
+          autoTagsHint.style['display'] = 'block';
+          autoTagsHint.textContent = `Auto tags: ${tags.join(' ')}`;
+        } else {
+          autoTagsHint.style['display'] = 'none';
+        }
+      }
+
+      function refreshAutoTags() {
+        const requestId = ++autoTagRequest;
+        if (!urlInput.value) {
+          renderAutoTags([]);
+          return;
+        }
+
+        const params = new URLSearchParams({
+          url: urlInput.value,
+          title: titleInput.value,
+          description: descriptionInput.value,
+        });
+        fetch(`{% url 'linkding:api-root' %}bookmarks/suggest-tags/?${params}`)
+          .then(response => response.json())
+          .then(data => {
+            if (requestId !== autoTagRequest) {
+              return;
+            }
+            renderAutoTags(data.auto_tags);
+          });
       }
 
       function checkUrl() {
@@ -169,16 +205,11 @@
               }
             }
 
-            // Preview auto tags
-            const autoTags = data.auto_tags;
-            const autoTagsHint = document.querySelector('.form-input-hint.auto-tags');
-
-            if (autoTags.length > 0) {
-              autoTags.sort();
-              autoTagsHint.style['display'] = 'block';
-              autoTagsHint.innerHTML = `Auto tags: ${autoTags.join(" ")}`;
+            ++autoTagRequest;
+            if (isTitleModified || isDescriptionModified) {
+              refreshAutoTags();
             } else {
-              autoTagsHint.style['display'] = 'none';
+              renderAutoTags(data.auto_tags);
             }
           });
       }
@@ -209,6 +240,10 @@
               descriptionInput.value = metadata.description;
               descriptionInput.classList.add("modified");
             }
+
+            if (!editedBookmarkId) {
+              refreshAutoTags();
+            }
           });
       }
 
@@ -229,11 +264,14 @@
 
         checkUrl();
         urlInput.addEventListener('input', debounce(checkUrl));
+        const refreshAutoTagsDebounced = debounce(refreshAutoTags);
         titleInput.addEventListener('input', () => {
           isTitleModified = true;
+          refreshAutoTagsDebounced();
         });
         descriptionInput.addEventListener('input', () => {
           isDescriptionModified = true;
+          refreshAutoTagsDebounced();
         });
       } else {
         refreshButton.style['display'] = 'inline-block';

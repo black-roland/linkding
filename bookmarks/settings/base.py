@@ -174,6 +174,13 @@ LD_DISABLE_BACKGROUND_TASKS = os.getenv("LD_DISABLE_BACKGROUND_TASKS", False) in
     "1",
 )
 
+# Quantized fastText model (.ftz) used to suggest tags from title and description.
+# Empty path disables the feature. The model is loaded once per process and kept
+# in memory.
+LD_FASTTEXT_MODEL_PATH = os.getenv("LD_FASTTEXT_MODEL_PATH", "")
+LD_FASTTEXT_THRESHOLD = float(os.getenv("LD_FASTTEXT_THRESHOLD", "0.3"))
+LD_FASTTEXT_MAX_TAGS = int(os.getenv("LD_FASTTEXT_MAX_TAGS", "3"))
+
 # Huey task queue
 HUEY = {
     "huey_class": "huey.SqliteHuey",
